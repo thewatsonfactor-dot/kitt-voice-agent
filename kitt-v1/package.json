@@ -1,0 +1,35 @@
+{
+  "name": "kitt",
+  "version": "0.1.0",
+  "description": "KITT — voice-first AI co-pilot for Jeffery Watson (local-first, low-cost)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "whisper:setup": "python3.12 -m venv python/.venv && python/.venv/bin/pip install -U pip faster-whisper sounddevice numpy"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "@prisma/client": "^6.19.3",
+    "dotenv": "latest",
+    "express": "latest",
+    "imapflow": "^1.3.6",
+    "ws": "latest"
+  },
+  "devDependencies": {
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "@types/ws": "latest",
+    "prisma": "^6.19.3",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

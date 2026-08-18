@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KITT // operating system</title>
+<style>
+:root {
+  --bg-0: #040303;
+  --bg-1: #080606;
+
+  --ink:        #d8d0c5;
+  --ink-dim:    #6e6760;
+  --ink-faint:  #3a3530;
+  --ink-bright: #f4ecdf;
+
+  --accent-red:        #ff1818;
+  --accent-red-soft:   rgba(255, 24, 24, 0.55);
+  --accent-red-glow:   rgba(255, 60, 60, 0.5);
+
+  --warn:  #f0b840;
+  --warn-glow: rgba(240, 184, 64, 0.45);
+  --ok:    #5db888;
+  --error: #e64545;
+
+  --mode-accent:      #f4ecdf;
+  --mode-accent-soft: rgba(244, 236, 223, 0.4);
+  --mode-tint:        transparent;
+
+  --line: rgba(180, 30, 30, 0.06);
+
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+
+  --letter-wide:   0.22em;
+  --letter-wider:  0.30em;
+  --letter-x:      0.36em;
+}
+body[data-mode="novara"]     { --mode-accent: #ffb745; --mode-accent-soft: rgba(255, 183, 69, 0.45); --mode-tint: rgba(200, 130, 50, 0.02); }
+body[data-mode="homerepair"] { --mode-accent: #6ee2d6; --mode-accent-soft: rgba(110, 226, 214, 0.4); --mode-tint: rgba(60, 170, 165, 0.025); }
+body[data-mode="kaischa"]    { --mode-accent: #b89eff; --mode-accent-soft: rgba(184, 158, 255, 0.45); --mode-tint: rgba(120, 90, 180, 0.025); }
+body[data-mode="builder"]    { --mode-accent: #ff5840; --mode-accent-soft: rgba(255, 88, 64, 0.5); --mode-tint: rgba(180, 40, 30, 0.03); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-0);
+  color: var(--ink);
+  overflow: hidden;
+  position: relative;
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bg-tint { position: fixed; inset: 0; pointer-events: none; background: var(--mode-tint); z-index: 0; transition: background 1.2s ease; }
+
+.bloom-scanner {
+  position: fixed;
+  width: 70vw; height: 26vh;
+  left: 50%; top: 20%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(80px);
+  background: rgba(220, 20, 20, 0.10);
+  z-index: 1;
+  animation: scanner-breath 9s ease-in-out infinite;
+}
+@keyframes scanner-breath { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+
+.bloom-ambient {
+  position: fixed;
+  width: 100vw; height: 18vh;
+  left: 0; bottom: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, rgba(150, 0, 0, 0.05) 100%);
+  z-index: 1;
+}
+
+.scanlines {
+  position: fixed; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(180deg, transparent 0, transparent 2px, rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 3px);
+  z-index: 96;
+  animation: scanline-drift 18s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes scanline-drift { from { background-position: 0 0; } to { background-position: 0 120px; } }
+
+.monitor-flicker { position: fixed; inset: 0; pointer-events: none; z-index: 95; animation: monitor-flicker 11s ease-in-out infinite; }
+@keyframes monitor-flicker { 0%, 100% { background: rgba(0,0,0,0); } 22% { background: rgba(0,0,0,0.05); } 22.3% { background: rgba(0,0,0,0); } 71% { background: rgba(0,0,0,0.03); } 71.4% { background: rgba(0,0,0,0); } }
+
+.vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 99;
+  background: radial-gradient(ellipse 80% 70% at center, transparent 35%, rgba(0,0,0,0.55) 80%, rgba(0,0,0,0.85) 100%);
+}
+
+.particles { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+.particle { position: absolute; width: 1px; height: 1px; background: var(--ink); border-radius: 50%; opacity: 0; animation: particle-drift linear infinite; }
+@keyframes particle-drift { 0% { transform: translate(0,0); opacity: 0; } 15% { opacity: 0.08; } 85% { opacity: 0.05; } 100% { transform: translate(var(--dx),var(--dy)); opacity: 0; } }
+
+/* ============ APP ============ */
+.app {
+  position: relative;
+  height: 100vh;
+  z-index: 10;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto auto;
+  gap: 28px;
+  padding: 28px 56px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* ============ STATUS BAR ============ */
+header.status-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--letter-wider);
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.bar-right { display: flex; align-items: center; justify-content: flex-end; gap: 22px; }
+.bar-mid { color: var(--ink-faint); letter-spacing: var(--letter-x); }
+
+.mode-badge {
+  color: var(--mode-accent);
+  position: relative;
+  padding-left: 16px;
+  letter-spacing: var(--letter-wide);
+  transition: color 0.6s ease;
+  text-shadow: 0 0 8px var(--mode-accent-soft);
+}
+.mode-badge::before {
+  content: ""; position: absolute; left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 6px; height: 6px;
+  background: var(--mode-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--mode-accent-soft), 0 0 14px var(--mode-accent-soft);
+  animation: mode-pulse 3.4s ease-in-out infinite;
+}
+@keyframes mode-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.timestamp { color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.1em; }
+.link-stat { display: flex; align-items: center; gap: 8px; color: var(--ink-dim); }
+.link-stat .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-red); box-shadow: 0 0 5px var(--accent-red-glow); animation: link-pulse 2.4s ease-in-out infinite; }
+.link-stat.offline .dot { background: var(--warn); box-shadow: 0 0 5px var(--warn-glow); animation: none; opacity: 0.8; }
+@keyframes link-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+/* ============ HERO (SCANNER + TRANSCRIPT) ============ */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 36px;
+  padding: 16px 0;
+  min-height: 0;
+}
+
+.scanner-frame {
+  width: 78%;
+  max-width: 820px;
+  position: relative;
+}
+.scanner-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: var(--letter-x);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 12px;
+}
+.scanner-label .state { color: var(--ink-dim); transition: color 0.8s ease; letter-spacing: var(--letter-wide); }
+.scanner-label .state.active { color: var(--accent-red); text-shadow: 0 0 8px var(--accent-red-glow); }
+
+.scanner-spill {
+  position: absolute;
+  left: -8%; right: -8%; top: 4px; bottom: -32px;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(40px);
+  background: transparent;
+  transition: background 60ms linear;
+}
+.bezel {
+  position: relative;
+  height: 68px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.022) 0%, transparent 18%, transparent 82%, rgba(255,255,255,0.010) 100%),
+    #050303;
+  border-radius: 2px;
+  padding: 9px 10px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.025),
+    inset 0 -1px 0 rgba(0,0,0,0.6),
+    inset 0 0 50px rgba(0,0,0,0.7),
+    0 6px 28px rgba(0,0,0,0.55);
+}
+.bezel-glass {
+  position: absolute; top: 0; left: 0; right: 0; height: 32%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+  pointer-events: none; z-index: 3;
+}
+.bezel-mount { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: rgba(60, 50, 45, 0.7); z-index: 4; }
+.bezel-mount.tl { top: 5px; left: 5px; } .bezel-mount.tr { top: 5px; right: 5px; }
+.bezel-mount.bl { bottom: 5px; left: 5px; } .bezel-mount.br { bottom: 5px; right: 5px; }
+.cells { height: 100%; display: flex; gap: 3px; position: relative; z-index: 2; }
+.cell { flex: 1; background: #120000; border-radius: 1px; border: 0.5px solid rgba(50,0,0,0.5); transition: background 16ms linear; }
+
+.transcript {
+  width: 78%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}
+.user-line {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-dim);
+  letter-spacing: 0.01em;
+  min-height: 19px;
+  transition: color 0.3s;
+}
+.user-line.empty { color: var(--ink-faint); }
+.user-line .caret {
+  color: var(--accent-red);
+  margin-right: 10px;
+  text-shadow: 0 0 6px var(--accent-red-glow);
+  animation: caret-blink 1.1s steps(2) infinite;
+}
+@keyframes caret-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.2; } }
+.reply-line {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--mode-accent);
+  line-height: 1.5;
+  letter-spacing: 0.005em;
+  text-shadow: 0 0 10px var(--mode-accent-soft);
+  min-height: 22px;
+  transition: color 0.6s, opacity 0.3s;
+}
+.reply-line.empty { color: var(--ink-faint); text-shadow: none; font-style: italic; opacity: 0.7; }
+.fading { opacity: 0.15 !important; }
+
+/* ============ TELEMETRY STRIP ============ */
+.telemetry {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+.telemetry::before {
+  content: ""; position: absolute; top: -1px; left: 0;
+  width: 80px; height: 1px;
+  background: linear-gradient(90deg, var(--accent-red-soft), transparent);
+}
+.tcell {
+  padding: 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-right: 1px solid var(--line);
+}
+.tcell:last-child { border-right: none; }
+.tcell .lbl {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: var(--letter-wider);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.tcell .val {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  transition: color 0.3s, opacity 0.12s;
+}
+.tcell .val.flicker { opacity: 0.5; }
+.tcell .val.small { font-size: 11px; }
+.tcell .val.mode-color { color: var(--mode-accent); text-shadow: 0 0 6px var(--mode-accent-soft); }
+.tcell .val.warn { color: var(--warn); }
+.tcell .val.accent { color: var(--accent-red); text-shadow: 0 0 6px var(--accent-red-glow); }
+.tcell .val .dim { color: var(--ink-dim); font-size: 10px; letter-spacing: 0.08em; }
+
+/* ============ ISLANDS (VOICE + LOG) ============ */
+.islands {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 28px;
+  min-height: 0;
+}
+
+.island-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: var(--letter-x);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 10px;
+}
+
+.voice-island { display: flex; flex-direction: column; }
+.eq-rack { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; padding: 4px 0; }
+.eq-stack { display: flex; flex-direction: column-reverse; gap: 2px; }
+.eq-seg {
+  height: 4px;
+  background: #160202;
+  border-radius: 0.5px;
+  transition: background 60ms linear, box-shadow 60ms linear;
+}
+.eq-seg.lit { background: #ff2222; box-shadow: 0 0 4px rgba(255,30,30,0.75); }
+.eq-seg.lit.hot { background: #ff6a3a; box-shadow: 0 0 5px rgba(255,100,60,0.85); }
+.eq-seg.lit.peak { background: #ffd340; box-shadow: 0 0 5px rgba(255,210,80,0.85); }
+
+.log-island { display: flex; flex-direction: column; min-height: 0; }
+.log-island .island-label { display: flex; justify-content: space-between; }
+.log-island .island-label .count { color: var(--ink-faint); letter-spacing: 0.08em; }
+.terminal-log {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.8;
+  color: var(--ink-dim);
+  mask-image: linear-gradient(180deg, transparent 0%, black 10%, black 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 10%, black 100%);
+}
+.log-line {
+  opacity: 0;
+  animation: log-fade-in 0.4s cubic-bezier(0.16,1,0.3,1) forwards;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  gap: 10px;
+}
+.log-line .ts { color: var(--ink-faint); flex-shrink: 0; }
+.log-line .body { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.log-line .prompt { color: var(--accent-red-soft); margin-right: 6px; }
+.log-line .key { color: var(--ink); margin-right: 10px; }
+.log-line.warn-line { color: var(--warn); }
+.log-line.error-line { color: var(--error); }
+.log-line.debug-line { color: rgba(120, 110, 100, 0.4); opacity: 0.5 !important; }
+@keyframes log-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 0.8; transform: translateY(0); } }
+.terminal-cursor {
+  display: inline-block;
+  width: 5px; height: 10px;
+  background: var(--accent-red);
+  vertical-align: -1px;
+  margin-left: 4px;
+  animation: cursor-blink 1.1s steps(2) infinite;
+}
+@keyframes cursor-blink { 0%, 49% { opacity: 0.9; } 50%, 100% { opacity: 0.1; } }
+
+body[data-state="idle"] .telemetry,
+body[data-state="idle"] .islands { opacity: 0.78; transition: opacity 0.8s ease; }
+
+/* ============ FOOTER ============ */
+footer.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  position: relative;
+}
+footer.controls::before {
+  content: ""; position: absolute; top: -1px; right: 0;
+  width: 80px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-red-soft));
+}
+.input-row { display: flex; flex: 1; max-width: 540px; gap: 10px; align-items: center; }
+input[type="text"] {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--ink-bright);
+  border: 1px solid rgba(220, 60, 60, 0.18);
+  border-radius: 2px;
+  padding: 9px 14px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.015em;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+input[type="text"]:focus {
+  border-color: var(--accent-red-soft);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: 0 0 0 1px var(--accent-red-glow), inset 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+input[type="text"]::placeholder { color: var(--ink-dim); letter-spacing: 0.16em; text-transform: uppercase; font-size: 10.5px; }
+.btn-group { display: flex; gap: 4px; align-items: center; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; }
+.btn-group .lbl { color: var(--ink-faint); margin-right: 8px; letter-spacing: var(--letter-wider); }
+button {
+  background: transparent;
+  color: var(--ink-dim);
+  border: none;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.25s ease;
+}
+button:hover { color: var(--ink); }
+button.mode-active {
+  color: var(--mode-accent);
+  text-shadow: 0 0 6px var(--mode-accent-soft);
+  position: relative;
+}
+button.mode-active::after {
+  content: ""; position: absolute; bottom: 0; left: 12px; right: 12px;
+  height: 1px;
+  background: var(--mode-accent);
+  box-shadow: 0 0 4px var(--mode-accent-soft);
+}
+button.interrupt { color: var(--ink-faint); }
+button.interrupt:hover { color: var(--warn); }
+
+@media (max-width: 900px) {
+  .app { padding: 20px 24px; gap: 22px; }
+  .scanner-frame, .transcript { width: 100%; }
+  .telemetry { grid-template-columns: repeat(2, 1fr); }
+  .tcell { border-right: none; padding: 8px 12px; }
+  .islands { grid-template-columns: 1fr; }
+  .bar-mid { display: none; }
+  footer.controls { flex-direction: column; align-items: stretch; gap: 12px; }
+}
+</style>
+</head>
+<body data-state="idle" data-mode="operator">
+
+<div class="bg-tint"></div>
+<div class="bloom-scanner"></div>
+<div class="bloom-ambient"></div>
+<div class="particles" id="particles"></div>
+<div class="monitor-flicker"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<div class="app">
+
+  <header class="status-bar">
+    <div>
+      <span class="mode-badge" id="mode-badge">MODE — OPERATOR</span>
+    </div>
+    <div class="bar-mid">KNIGHT INDUSTRIES TWO THOUSAND</div>
+    <div class="bar-right">
+      <span class="timestamp" id="ts">--:--:--</span>
+      <span class="link-stat" id="link-stat"><span class="dot"></span><span id="link-stat-text">SECURE LINK</span></span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="scanner-frame">
+      <div class="scanner-label">
+        <span>SCANNER ARRAY</span>
+        <span class="state" id="scanner-state">IDLE</span>
+      </div>
+      <div class="scanner-spill" id="scanner-spill"></div>
+      <div class="bezel">
+        <div class="bezel-glass"></div>
+        <span class="bezel-mount tl"></span><span class="bezel-mount tr"></span>
+        <span class="bezel-mount bl"></span><span class="bezel-mount br"></span>
+        <div class="cells" id="cells">
+          <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+          <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="transcript">
+      <div class="user-line empty" id="user-line"><span class="caret">›</span><span id="user-text">Awaiting wake word — say "Hey KITT" or type below.</span></div>
+      <div class="reply-line empty" id="reply-line"><span id="reply-text">standing by</span></div>
+    </div>
+  </section>
+
+  <section class="telemetry">
+    <div class="tcell">
+      <span class="lbl">Latency</span>
+      <span class="val" id="lat-cloud">— ms</span>
+    </div>
+    <div class="tcell">
+      <span class="lbl">Local</span>
+      <span class="val" id="lat-local">— ms</span>
+    </div>
+    <div class="tcell">
+      <span class="lbl">Cloud</span>
+      <span class="val small">sonnet-4-6 <span class="dim">/ ok</span></span>
+    </div>
+    <div class="tcell">
+      <span class="lbl">Memory</span>
+      <span class="val small mode-color" id="mem-val">operator <span class="dim">/ 0</span></span>
+    </div>
+    <div class="tcell">
+      <span class="lbl">Hotword</span>
+      <span class="val small" id="hotword-val">armed</span>
+    </div>
+  </section>
+
+  <section class="islands">
+    <div class="voice-island">
+      <div class="island-label">Voice Telemetry</div>
+      <div class="eq-rack">
+        <div class="eq-stack" data-eq="0"></div>
+        <div class="eq-stack" data-eq="1"></div>
+        <div class="eq-stack" data-eq="2"></div>
+        <div class="eq-stack" data-eq="3"></div>
+      </div>
+    </div>
+
+    <div class="log-island">
+      <div class="island-label">
+        <span>System Log</span>
+        <span class="count" id="log-count">0000</span>
+      </div>
+      <div class="terminal-log" id="log"></div>
+    </div>
+  </section>
+
+  <footer class="controls">
+    <div class="input-row">
+      <input type="text" id="cmd" placeholder='Type a command — or say "hey kitt"' autocomplete="off" />
+      <button class="interrupt" id="interrupt-btn">Cancel</button>
+    </div>
+    <div class="btn-group">
+      <span class="lbl">Mode</span>
+      <button data-mode="operator" class="mode-active">Operator</button>
+      <button data-mode="novara">Novara</button>
+      <button data-mode="homerepair">HomeRepair</button>
+      <button data-mode="kaischa">Kaischa</button>
+      <button data-mode="builder">Builder</button>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function() {
+  const body = document.body;
+
+  // ---------- SCANNER ----------
+  const cells = document.querySelectorAll('.cell');
+  const N = cells.length;
+  const cellVariance = Array.from({length: N}, () => 0.82 + Math.random() * 0.18);
+  const cellAfterglow = Array.from({length: N}, () => 0);
+  const cellStutter = Array.from({length: N}, () => 0);
+  const spillEl = document.getElementById('scanner-spill');
+
+  const STATE_CFG = {
+    idle:      { cycle: 2.0,  maxBright: 0.66, label: 'IDLE' },
+    listening: { cycle: 1.1,  maxBright: 1.00, label: 'LISTENING' },
+    thinking:  { cycle: 0.55, maxBright: 0.92, label: 'THINKING' },
+    speaking:  { cycle: 0.7,  maxBright: 1.00, label: 'SPEAKING' }
+  };
+
+  let state = 'idle', mode = 'operator';
+  let currentCycle = STATE_CFG.idle.cycle, targetCycle = currentCycle;
+  let currentMax = STATE_CFG.idle.maxBright, targetMax = currentMax;
+  let pos = 0, dir = 1, lastTs = performance.now();
+
+  function applyCell(cell, b) {
+    b = Math.max(0, Math.min(1, b));
+    const r = Math.round(18 + b * 237);
+    const g = Math.round(b * b * 80);
+    const blu = Math.round(b * b * 60);
+    cell.style.background = 'rgb(' + r + ',' + g + ',' + blu + ')';
+    if (b > 0.03) {
+      const size = Math.round(3 + b * 28);
+      const spread = Math.round(b * 8);
+      cell.style.boxShadow =
+        '0 0 ' + size + 'px ' + spread + 'px rgba(255,30,30,' + (b * 0.85).toFixed(2) + '),' +
+        '0 0 ' + (size * 2.2) + 'px ' + (spread + 3) + 'px rgba(220,10,10,' + (b * 0.4).toFixed(2) + ')';
+    } else { cell.style.boxShadow = 'none'; }
+  }
+
+  function scannerFrame(ts) {
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+    const t = ts / 1000;
+
+    currentCycle += (targetCycle - currentCycle) * Math.min(1, dt * 4);
+    currentMax += (targetMax - currentMax) * Math.min(1, dt * 4);
+
+    const mainsWobble = Math.sin(t * 60 * Math.PI * 2) * 0.015;
+    let peak = 0;
+
+    if (state === 'speaking') {
+      cells.forEach((cell, i) => {
+        const wave = Math.sin(t * 5.5 + i * 0.35) * 0.4 + 0.5;
+        const beat = Math.sin(t * 2.1) * 0.25 + 0.7;
+        const env = Math.sin((i / (N-1)) * Math.PI) * 0.4 + 0.6;
+        let b = wave * beat * env * currentMax * cellVariance[i];
+        b = Math.max(0, b + (Math.random() - 0.5) * 0.04 + mainsWobble);
+        if (Math.random() < 0.004) cellStutter[i] = 4;
+        if (cellStutter[i] > 0) { b *= 0.55; cellStutter[i]--; }
+        applyCell(cell, b);
+        if (b > peak) peak = b;
+      });
+    } else {
+      const unitsPerSec = (2 * (N - 1)) / currentCycle;
+      pos += dir * unitsPerSec * dt;
+      if (pos >= N - 1) { pos = N - 1; dir = -1; }
+      if (pos <= 0)     { pos = 0;     dir = 1;  }
+      cells.forEach((cell, i) => {
+        const dist = Math.abs(i - pos);
+        const target = Math.exp(-dist * dist * 0.55) * currentMax * cellVariance[i];
+        cellAfterglow[i] = Math.max(target, cellAfterglow[i] * Math.pow(0.001, dt));
+        let b = cellAfterglow[i];
+        const noise = (Math.random() - 0.5) * (b > 0.15 ? 0.05 : 0.012);
+        b = Math.max(0, b + noise + mainsWobble * (b > 0.1 ? 1 : 0));
+        if (b > 0.4 && Math.random() < 0.003) cellStutter[i] = 3;
+        if (cellStutter[i] > 0) { b *= 0.6; cellStutter[i]--; }
+        applyCell(cell, b);
+        if (b > peak) peak = b;
+      });
+    }
+
+    const spillOpacity = Math.min(1, peak * 0.85);
+    const spillSize = 40 + peak * 30;
+    spillEl.style.background =
+      'radial-gradient(ellipse at center, rgba(255, 30, 30, ' + (spillOpacity * 0.55).toFixed(3) + ') 0%, ' +
+      'rgba(200, 10, 10, ' + (spillOpacity * 0.25).toFixed(3) + ') ' + (spillSize * 0.55).toFixed(0) + '%, ' +
+      'transparent ' + spillSize.toFixed(0) + '%)';
+
+    requestAnimationFrame(scannerFrame);
+  }
+  requestAnimationFrame(scannerFrame);
+
+  // ---------- VOICE TELEMETRY ----------
+  const EQ_SEGS = 14;
+  const eqStacks = document.querySelectorAll('.eq-stack');
+  eqStacks.forEach((stack) => {
+    for (let i = 0; i < EQ_SEGS; i++) {
+      const s = document.createElement('span');
+      s.className = 'eq-seg';
+      stack.appendChild(s);
+    }
+  });
+  const eqState = Array.from(eqStacks).map(() => ({ current: 0.12, target: 0.12 }));
+
+  function eqTargetForState(stackIdx) {
+    const phase = stackIdx * 0.7;
+    const t = performance.now() / 1000;
+    if (state === 'idle')      return 0.08 + Math.sin(t * 0.6 + phase) * 0.05 + Math.random() * 0.04;
+    if (state === 'listening') return 0.55 + Math.sin(t * 2.8 + phase) * 0.25 + Math.random() * 0.18;
+    if (state === 'thinking')  return 0.45 + Math.sin(t * 4.2 + phase) * 0.30 + Math.random() * 0.22;
+    return 0.65 + Math.sin(t * 3.4 + phase * 1.3) * 0.30 + Math.sin(t * 1.6) * 0.10;
+  }
+  setInterval(() => {
+    eqState.forEach((e, i) => { e.target = Math.max(0.02, Math.min(1, eqTargetForState(i))); });
+  }, 120);
+
+  function animateEq() {
+    eqState.forEach((e, idx) => {
+      e.current += (e.target - e.current) * 0.22;
+      const lit = Math.round(e.current * EQ_SEGS);
+      const segs = eqStacks[idx].children;
+      for (let i = 0; i < EQ_SEGS; i++) {
+        const seg = segs[i];
+        seg.classList.remove('lit', 'hot', 'peak');
+        if (i < lit) {
+          seg.classList.add('lit');
+          if (i === lit - 1 && i >= EQ_SEGS - 2) seg.classList.add('peak');
+          else if (i >= EQ_SEGS * 0.78) seg.classList.add('hot');
+        }
+      }
+    });
+    requestAnimationFrame(animateEq);
+  }
+  requestAnimationFrame(animateEq);
+
+  // ---------- TIMESTAMP ----------
+  function tick() {
+    const d = new Date();
+    document.getElementById('ts').textContent =
+      String(d.getHours()).padStart(2, '0') + ':' +
+      String(d.getMinutes()).padStart(2, '0') + ':' +
+      String(d.getSeconds()).padStart(2, '0');
+  }
+  setInterval(tick, 1000); tick();
+
+  // ---------- LATENCY ----------
+  const latState = {
+    cloud: { current: 0, target: 0, el: document.getElementById('lat-cloud') },
+    local: { current: 0, target: 0, el: document.getElementById('lat-local') }
+  };
+  function setLatency(kind, ms) {
+    const s = latState[kind];
+    s.target = ms;
+    s.el.classList.add('flicker');
+    setTimeout(() => s.el.classList.remove('flicker'), 80);
+    s.el.classList.toggle('accent', kind === 'cloud' && ms > 1400);
+    s.el.classList.toggle('warn', ms > 3000);
+  }
+  function latencyAnimate() {
+    for (const kind of ['cloud', 'local']) {
+      const s = latState[kind];
+      const diff = s.target - s.current;
+      if (Math.abs(diff) > 0.5) s.current += diff * 0.18;
+      else s.current = s.target;
+      if (s.target > 0) {
+        const jitter = (Math.random() - 0.5) * (kind === 'cloud' ? 8 : 2);
+        s.el.textContent = Math.max(0, Math.round(s.current + jitter)) + ' ms';
+      }
+    }
+    requestAnimationFrame(latencyAnimate);
+  }
+  requestAnimationFrame(latencyAnimate);
+
+  // ---------- PARTICLES ----------
+  const particlesEl = document.getElementById('particles');
+  for (let i = 0; i < 14; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.top = Math.random() * 100 + '%';
+    p.style.setProperty('--dx', (Math.random() * 50 - 25) + 'px');
+    p.style.setProperty('--dy', (Math.random() * 50 - 25) + 'px');
+    p.style.animationDuration = (Math.random() * 30 + 25) + 's';
+    p.style.animationDelay = (Math.random() * -25) + 's';
+    particlesEl.appendChild(p);
+  }
+
+  // ---------- STATE / MODE ----------
+  function setState(s) {
+    if (s === state) return;
+    state = s;
+    body.dataset.state = s;
+    targetCycle = STATE_CFG[s].cycle;
+    targetMax = STATE_CFG[s].maxBright;
+    const el = document.getElementById('scanner-state');
+    el.textContent = STATE_CFG[s].label;
+    el.classList.toggle('active', s !== 'idle');
+  }
+  const MODE_LABELS = { operator: 'OPERATOR', novara: 'NOVARA', homerepair: 'HOMEREPAIR', kaischa: 'KAISCHA', builder: 'BUILDER' };
+  function setMode(m) {
+    mode = m;
+    body.dataset.mode = m;
+    document.querySelectorAll('button[data-mode]').forEach(b => b.classList.toggle('mode-active', b.dataset.mode === m));
+    document.getElementById('mode-badge').textContent = 'MODE — ' + MODE_LABELS[m];
+  }
+
+  function setUserText(text) {
+    const el = document.getElementById('user-line');
+    const txt = document.getElementById('user-text');
+    txt.textContent = text || 'Awaiting wake word — say "Hey KITT" or type below.';
+    el.classList.toggle('empty', !text);
+  }
+  function setReplyText(text) {
+    const el = document.getElementById('reply-line');
+    const txt = document.getElementById('reply-text');
+    txt.textContent = text || 'standing by';
+    el.classList.toggle('empty', !text);
+  }
+
+  // ---------- LOG ----------
+  const logEl = document.getElementById('log');
+  const logCount = document.getElementById('log-count');
+  let logEntries = 0, currentCursor = null;
+  function appendLog(line) {
+    if (currentCursor) currentCursor.remove();
+    const node = document.createElement('div');
+    const lv = line.level || 'info';
+    node.className = 'log-line' + (lv === 'warn' ? ' warn-line' : lv === 'error' ? ' error-line' : lv === 'debug' ? ' debug-line' : '');
+    const ts = line.ts.slice(11, 19);
+    const body = '<span class="prompt">›</span><span class="key">' + escapeHtml(line.key) + '</span>' + escapeHtml(line.message);
+    node.innerHTML = '<span class="ts">' + ts + '</span><span class="body">' + body + '</span>';
+    logEl.appendChild(node);
+    logEntries++;
+    logCount.textContent = String(logEntries).padStart(4, '0');
+    const maxLines = Math.max(4, Math.floor(logEl.clientHeight / 20));
+    while (logEl.children.length > maxLines + 2) logEl.removeChild(logEl.firstChild);
+    currentCursor = document.createElement('span');
+    currentCursor.className = 'terminal-cursor';
+    node.querySelector('.body').appendChild(currentCursor);
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  // ---------- WS ----------
+  let ws, isStandalone = false, connectAttempts = 0;
+  function setStandalone(label) {
+    isStandalone = true;
+    document.getElementById('link-stat').classList.add('offline');
+    document.getElementById('link-stat-text').textContent = label || 'STANDALONE';
+  }
+  function connect() {
+    const host = location.host;
+    if (!host || location.protocol === 'file:') { setStandalone(); return; }
+    let connectTimer;
+    try {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(proto + '//' + host);
+    } catch { setStandalone(); return; }
+    connectTimer = setTimeout(() => {
+      if (ws && ws.readyState !== 1) { try { ws.close(); } catch {} setStandalone(); }
+    }, 3000);
+    ws.onopen = () => {
+      clearTimeout(connectTimer);
+      isStandalone = false; connectAttempts = 0;
+      document.getElementById('link-stat').classList.remove('offline');
+      document.getElementById('link-stat-text').textContent = 'SECURE LINK';
+    };
+    ws.onclose = () => {
+      clearTimeout(connectTimer);
+      if (isStandalone) return;
+      document.getElementById('link-stat').classList.add('offline');
+      connectAttempts++;
+      if (connectAttempts > 5) { setStandalone(); return; }
+      document.getElementById('link-stat-text').textContent = 'RECONNECTING';
+      setTimeout(connect, Math.min(1500 * connectAttempts, 6000));
+    };
+    ws.onerror = () => {};
+    ws.onmessage = (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch { return; }
+      handleMsg(msg);
+    };
+  }
+  function send(msg) {
+    if (isStandalone) return;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+  }
+  function handleMsg(msg) {
+    switch (msg.type) {
+      case 'snapshot':    setState(msg.data.state); setMode(msg.data.mode);
+                          if (msg.data.transcript) setUserText(msg.data.transcript);
+                          if (msg.data.reply)      setReplyText(msg.data.reply); break;
+      case 'state':       setState(msg.state); break;
+      case 'mode':        setMode(msg.mode); break;
+      case 'transcript':  setUserText(msg.text); break;
+      case 'reply':       setReplyText(msg.text); break;
+      case 'log':         appendLog(msg.line); break;
+      case 'latency':     setLatency(msg.kind, msg.ms); break;
+      case 'memory_size': document.getElementById('mem-val').innerHTML = mode + ' <span class="dim">/ ' + msg.count + '</span>'; break;
+    }
+  }
+  connect();
+
+  // ---------- INPUT ----------
+  const cmd = document.getElementById('cmd');
+  cmd.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && cmd.value.trim()) { send({ type: 'type', text: cmd.value.trim() }); cmd.value = ''; }
+    if (e.key === 'Escape') send({ type: 'interrupt' });
+  });
+  document.getElementById('interrupt-btn').addEventListener('click', () => send({ type: 'interrupt' }));
+  document.querySelectorAll('button[data-mode]').forEach(b => {
+    b.addEventListener('click', () => send({ type: 'set_mode', mode: b.dataset.mode }));
+  });
+})();
+</script>
+</body>
+</html>

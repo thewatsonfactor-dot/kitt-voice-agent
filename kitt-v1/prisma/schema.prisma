@@ -1,0 +1,47 @@
+// KITT — local memory + cost ledger
+// SQLite by default for zero-setup. To upgrade to Postgres:
+//   provider = "postgresql"
+//   url      = env("DATABASE_URL")
+// then `pnpm db:push` against a Postgres instance.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./kitt.db"
+}
+
+// Memory entries scoped by mode (operator, novara, etc.)
+// A mode = a namespace. Memory in one mode never bleeds into another.
+model Memory {
+  id        Int      @id @default(autoincrement())
+  mode      String
+  kind      String   // "fact" | "preference" | "scratch" | "transcript"
+  content   String
+  createdAt DateTime @default(now())
+  @@index([mode, kind, createdAt])
+}
+
+// Per-turn cost ledger. Daily aggregation drives the spending cap.
+model Cost {
+  id           Int      @id @default(autoincrement())
+  ts           DateTime @default(now())
+  model        String   // sonnet-4-6 | qwen2.5:7b
+  inputTokens  Int
+  outputTokens Int
+  usd          Float
+  @@index([ts])
+}
+
+// Audit trail of every tool execution.
+model ToolCall {
+  id        Int      @id @default(autoincrement())
+  ts        DateTime @default(now())
+  mode      String
+  tool      String
+  input     String   // JSON
+  ok        Boolean
+  result    String?  // JSON
+}

@@ -1,0 +1,34 @@
+{
+  "name": "watson-jarvis",
+  "version": "0.1.0",
+  "description": "Voice-first personal agent for Jeffery Watson — Claude-powered butler",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "@picovoice/porcupine-node": "latest",
+    "@picovoice/pvrecorder-node": "latest",
+    "dotenv": "latest",
+    "elevenlabs": "latest",
+    "express": "latest",
+    "nodejs-whisper": "latest",
+    "speaker": "latest"
+  },
+  "devDependencies": {
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "prettier": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}
