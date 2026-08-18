@@ -1,4 +1,4 @@
-# Watson JARVIS
+# Watson KITT
 
 Voice-first personal agent for Jeffery Watson. Listens via mic, executes via Claude, speaks via ElevenLabs.
 
