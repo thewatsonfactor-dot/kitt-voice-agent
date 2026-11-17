@@ -9,6 +9,7 @@ import os from "node:os";
 import { agent } from "./agent/orchestrator.js";
 import { onLog } from "./lib/log.js";
 import { startImapWatcher } from "./comms/imap-watcher.js";
+import { updateTodo } from "./household/comms-bus.js";
 import type { ClientToServer, ServerToClient } from "./ws/events.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -71,13 +72,10 @@ app.get("/api/dashboard", async (_req, res) => {
 
 app.patch("/api/todos/:id", async (req, res) => {
   try {
-    const todosPath = join(KITT_DIR, "household", "todos.json");
-    const todos: any[] = JSON.parse(await fs.readFile(todosPath, "utf-8"));
-    const todo = todos.find(t => t.id === req.params.id);
+    // Goes through the comms bus so a dashboard click and the email watcher
+    // can't overwrite each other's changes to todos.json.
+    const todo = await updateTodo(req.params.id, req.body ?? {});
     if (!todo) return res.status(404).json({ ok: false });
-    Object.assign(todo, req.body);
-    if (req.body.done) todo.doneAt = new Date().toISOString();
-    await fs.writeFile(todosPath, JSON.stringify(todos, null, 2));
     res.json({ ok: true, todo });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });

@@ -1,6 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { todoKey, writeJsonAtomic } from "../src/household/comms-bus.js";
+
+// One-off cleanup for duplicates created before the comms-bus fix.
+// Stop KITT (pnpm dev) before running this, so the watcher isn't writing
+// todos.json at the same time.
 
 interface TodoItem {
   id: string;
@@ -10,6 +15,7 @@ interface TodoItem {
   priority: "low" | "medium" | "high";
   entity: string;
   source: string;
+  sourceMsgId?: string;
   done: boolean;
   doneAt?: string;
   createdAt: string;
@@ -33,7 +39,7 @@ async function main() {
       if (doneTime < cutoff) continue;
     }
 
-    const key = `${todo.title}\0${todo.entity}`;
+    const key = todoKey(todo.title, todo.entity);
     const existing = seen.get(key);
     if (!existing || new Date(todo.createdAt) > new Date(existing.createdAt)) {
       seen.set(key, todo);
@@ -43,7 +49,7 @@ async function main() {
   kept.push(...seen.values());
   kept.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-  await fs.writeFile(TODOS_FILE, JSON.stringify(kept, null, 2));
+  await writeJsonAtomic(TODOS_FILE, kept);
   console.log(`Todos: ${before} → ${kept.length} (removed ${before - kept.length})`);
 }
 

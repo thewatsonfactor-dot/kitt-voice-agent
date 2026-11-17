@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "whisper:setup": "python3.12 -m venv python/.venv && python/.venv/bin/pip install -U pip faster-whisper sounddevice numpy"
+    "whisper:setup": "python3.12 -m venv python/.venv && python/.venv/bin/pip install -U pip faster-whisper sounddevice numpy",
+    "test": "tsx --test test/*.test.ts",
+    "dedupe-todos": "tsx scripts/dedupe-todos.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
